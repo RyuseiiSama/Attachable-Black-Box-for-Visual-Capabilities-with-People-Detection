@@ -36,7 +36,6 @@ import sys
 from pathlib import Path
 
 
-
 import torch
 
 FILE = Path(__file__).resolve()
@@ -119,13 +118,12 @@ class Evaluator(Node):
         print("Model Loaded, waiting for topic")
 
 
-
+    # @smart_inference_mode
     def evaluateee(self,msg):
         img = msg
         bridge = CvBridge()
         try:
             image = bridge.imgmsg_to_cv2(img,desired_encoding='passthrough')
-            print(image.shape)
         except CvBridgeError as e:
             print(e)
         self.get_logger().info("Generating Results...")
@@ -136,10 +134,12 @@ class Evaluator(Node):
             im = torch.from_numpy(im).to(self.model.device)
             im = im.half() if self.model.fp16 else im.float()  # uint8 to fp16/32
             im /= 255  # 0 - 255 to 0.0 - 1.0
+
             if len(im.shape) == 3:
                 im = im[None]  # expand for batch dim
             if self.model.xml and im.shape[0] > 1:
                 ims = torch.chunk(im, im.shape[0], 0)
+            im = torch.permute(im,(0,3,1,2))
 
         # Inference
         with self.dt[1]:
@@ -160,11 +160,10 @@ class Evaluator(Node):
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
+        to_send = []
         # Process predictions
         for i, det in enumerate(pred):  # per image
-            seen += 1
-            s += "%gx%g " % im.shape[2:]  # print string
+            # s += "%gx%g " % im.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names))
             if len(det):
@@ -174,17 +173,19 @@ class Evaluator(Node):
                 # Print results
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
-                    s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                    # s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
-                to_send = []
+                
                 for *xyxy, conf, cls in reversed(det):
                     c = int(cls)  # integer class
                     label = self.names[c] if self.hide_conf else f"{self.names[c]}"
                     confidence = float(conf)
-                    if c == 0:
-                        print(xyxy,conf,cls)   # xyxy is bbox loc, conf is confidence, cls is class. cls 0 is person
-                        to_send.append(str(xyxy))
+                    if c == 0 and conf>0.8:
+                        temp = []
+                        for i in xyxy:  # xyxy is bbox loc, conf is confidence, cls is class. cls 0 is person
+                            temp.append(int(i)) 
+                        to_send.append(temp)
         send = String()
         send.data = str(to_send)
         self.publisher.publish(send)
@@ -194,112 +195,7 @@ class Evaluator(Node):
         
 
 
-
-@smart_inference_mode()
-def run(
-    weights=ROOT / "yolov5s.pt",  # model path or triton URL
-    source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)
-    data=ROOT / "data/coco128.yaml",  # dataset.yaml path
-    imgsz=(480, 640),  # inference size (height, width)
-    conf_thres=0.25,  # confidence threshold
-    iou_thres=0.45,  # NMS IOU threshold
-    max_det=1000,  # maximum detections per image
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-    view_img=False,  # show results
-    classes=None,  # filter by class: --class 0, or --class 0 2 3
-    agnostic_nms=False,  # class-agnostic NMS
-    augment=False,  # augmented inference
-    visualize=False,  # visualize features
-    line_thickness=3,  # bounding box thickness (pixels)
-    hide_conf=False,  # hide confidences
-    half=False,  # use FP16 half-precision inference
-    dnn=False,  # use OpenCV DNN for ONNX inference
-):
-    
-
-    source = str(source)
-
-    webcam = False
-    # Directories
- 
-
-    # Load model
-    device = select_device(device)
-    model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
-    stride, names, pt = model.stride, model.names, model.pt
-    imgsz = check_img_size(imgsz, s=stride)  # check image size
-
-    # Dataloader
-    bs = 1  # batch_size
-    
-    dataset = None, None, None, None, None
-    # Run inference
-    model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
-    seen, windows, dt = 0, [], (Profile(device=device), Profile(device=device), Profile(device=device))
-
-
-    for path, im, im0s, vid_cap, s in dataset:
-        im = imm # Feed numpy image here
-        with dt[0]:
-            im = torch.from_numpy(im).to(model.device)
-            im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
-            im /= 255  # 0 - 255 to 0.0 - 1.0
-            if len(im.shape) == 3:
-                im = im[None]  # expand for batch dim
-            if model.xml and im.shape[0] > 1:
-                ims = torch.chunk(im, im.shape[0], 0)
-
-        # Inference
-        with dt[1]:
-            visualize = False
-            if model.xml and im.shape[0] > 1:
-                pred = None
-                for image in ims:
-                    if pred is None:
-                        pred = model(image, augment=augment, visualize=visualize).unsqueeze(0)
-                    else:
-                        pred = torch.cat((pred, model(image, augment=augment, visualize=visualize).unsqueeze(0)), dim=0)
-                pred = [pred, None]
-            else:
-                pred = model(im, augment=augment, visualize=visualize)
-        # NMS
-        with dt[2]:
-            pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
-
-        # Second-stage classifier (optional)
-        # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
-        # Process predictions
-        for i, det in enumerate(pred):  # per image
-            seen += 1
-            if webcam:  # batch_size >= 1
-                p, im0, frame = path[i], im0s[i].copy(), dataset.count
-                s += f"{i}: "
-            else:
-                p, im0, frame = path, im0s.copy(), getattr(dataset, "frame", 0)
-
-            p = Path(p)  # to Path
-            s += "%gx%g " % im.shape[2:]  # print string
-
-            if len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
-
-                # Print results
-                for c in det[:, 5].unique():
-                    n = (det[:, 5] == c).sum()  # detections per class
-                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
-                # Write results
-                to_send = []
-                for *xyxy, conf, cls in reversed(det):
-                    c = int(cls)  # integer class
-                    label = names[c] if hide_conf else f"{names[c]}"
-                    confidence = float(conf)
-                    confidence_str = f"{confidence:.2f}"
-
-                    if c == 0:
-                        print(xyxy,conf,cls)   # xyxy is bbox loc, conf is confidence, cls is class. cls 0 is person
+          
 
 
 def main():

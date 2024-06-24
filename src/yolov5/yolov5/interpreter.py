@@ -92,6 +92,8 @@ class Interpreter(Node):
        centres = []
        for i in self.bboxes:
           centres.append(self.find_centre(i))  # Get a list of centres for detected bounding box
+       print(centres)
+
        depths = self.imageDepthCallback(self.dimg,centres)
        for x in range(len(depths)):
           # Write distance 
@@ -116,8 +118,7 @@ class Interpreter(Node):
               ################
               pix = i
               # line = '\rDepth at pixel(%3d, %3d): %7.1f(mm).' % (pix[0], pix[1], cv_image[pix[1], pix[0]])
-              print(cv_image.shape)
-              depth = cv_image[pix[1], pix[0]]/1000
+              depth = cv_image[pix[0], pix[1]]/1000
               depths.append(depth)
               if self.intrinsics:
                   result = rs2.rs2_deproject_pixel_to_point(self.intrinsics, [pix[0], pix[1]], depth)
@@ -125,7 +126,8 @@ class Interpreter(Node):
               if (not self.pix_grade is None):
                   line += ' Grade: %2d' % self.pix_grade
               # self.publisher.publish(msg)
-
+          except IndexError:
+              return
           except CvBridgeError as e:
               print(e)
               return
