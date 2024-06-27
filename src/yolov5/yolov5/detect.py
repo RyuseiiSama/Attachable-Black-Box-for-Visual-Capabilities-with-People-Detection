@@ -71,6 +71,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image as Image
 from std_msgs.msg import String
+import cv2
 from cv_bridge import CvBridge, CvBridgeError
 
 

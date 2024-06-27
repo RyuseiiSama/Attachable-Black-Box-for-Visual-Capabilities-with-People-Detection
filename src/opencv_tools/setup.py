@@ -1,11 +1,11 @@
-from setuptools import find_packages, setup
+from setuptools import setup
 
-package_name = 'yolov5'
+package_name = 'opencv_tools'
 
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=[package_name],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -13,14 +13,14 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='ddq2',
-    maintainer_email='hominhan56@gmail.com',
+    maintainer='polaris',
+    maintainer_email='polaris@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-        'evaluator = yolov5.detect:main','interpreter = yolov5.interpreter:main'
+  	'image_pub = opencv_tools.image_pub:main'	      
         ],
     },
 )

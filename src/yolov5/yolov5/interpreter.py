@@ -2,12 +2,13 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 import rclpy
+import cv2
 from rclpy.node import Node
 from sensor_msgs.msg import Image as msg_Image
 from sensor_msgs.msg import CameraInfo
 from std_msgs.msg import String
+
 from cv_bridge import CvBridge, CvBridgeError
-import cv2
 import sys
 import os
 import numpy as np
@@ -33,10 +34,15 @@ class Interpreter(Node):
       self.sub = self.create_subscription(msg_Image, 'camera/camera/depth/image_rect_raw', self.image_handler, 10)
       self.sub_info = self.create_subscription(CameraInfo, 'camera/camera/depth/camera_info', self.imageDepthInfoCallback, 10)
       self.color_img = self.create_subscription(msg_Image,'/camera/camera/color/image_raw',self.color,10)
+      self.picam1 = self.create_subscription(msg_Image,'/image_raw1',self.rpicam1,10)
+      self.picam2 = self.create_subscription(msg_Image,'/image_raw2',self.rpicam2,10)
       self.publisher = self.create_publisher(msg_Image, 'labelled_img' ,10)
+      self.combined = self.create_publisher(msg_Image, 'combined_img', 10)
       self.intrinsics = None
       self.pix_grade = None
       self.img = None
+      self.piimg1 = None
+      self.piimg2 = None
       import pyrealsense2 as rs2
       if (not hasattr(rs2, 'intrinsics')):
         import pyrealsense2.pyrealsense2 as rs2
@@ -46,7 +52,11 @@ class Interpreter(Node):
     def color(self,img):
        self.get_logger().info("received an image")
        self.img = img
-    
+    def rpicam1(self,img): # Capture rpicam1 image
+      self.piimg1 = img
+    def rpicam2(self,img): # Capture rpicam2 image
+      self.piimg2 = img
+      
     def process_msg(self,msg):
       ''' Returns a list of all bounding boxes'''
       unprocessed = msg.data
@@ -85,6 +95,7 @@ class Interpreter(Node):
           if not self.img:
              return
           self.publisher.publish(self.img)
+          self.combined_img(self.img)
           return
        
        self.cimg = self.bridge.imgmsg_to_cv2(self.img,self.img.encoding)
@@ -92,8 +103,6 @@ class Interpreter(Node):
        centres = []
        for i in self.bboxes:
           centres.append(self.find_centre(i))  # Get a list of centres for detected bounding box
-       print(centres)
-
        depths = self.imageDepthCallback(self.dimg,centres)
        for x in range(len(depths)):
           # Write distance 
@@ -105,9 +114,33 @@ class Interpreter(Node):
           cv2.rectangle(self.cimg, (self.bboxes[x][0], self.bboxes[x][1]), (self.bboxes[x][2],self.bboxes[x][3]), (255,255,255) , 1)
        final_img = self.bridge.cv2_to_imgmsg(self.cimg,self.img.encoding)
        self.publisher.publish(final_img)
-        
-       
+       self.combined_img(final_img)
+    
+    def combined_img(self,labelled_img):
+        if not self.piimg1 or not self.piimg2:
+            self.get_logger().info("SMLHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
+            return
+        piimg1 = self.bridge.imgmsg_to_cv2(self.piimg1,self.piimg1.encoding)
+        self.get_logger().info(f"piimg1 IS A {self.piimg1.encoding}")
+        self.get_logger().info(f"piimg2 IS A {self.piimg2.encoding}")
+        self.get_logger().info(f"label IS A {labelled_img.encoding}")
+        piimg2 = self.bridge.imgmsg_to_cv2(self.piimg2,self.piimg2.encoding)
+        depthcamimg = self.bridge.imgmsg_to_cv2(labelled_img,labelled_img.encoding)
 
+        bottom_row_width = piimg1.shape[1] + piimg2.shape[1]
+        output_height = piimg1.shape[0] + depthcamimg.shape[0]
+        temp_image = np.zeros((output_height,bottom_row_width,3),dtype=np.uint8)
+
+        # Place top image 
+        temp_image[:depthcamimg.shape[0],depthcamimg.shape[1]//2:depthcamimg.shape[1]//2 + depthcamimg.shape[1]] = depthcamimg
+
+        # Place bottom images
+        btm = cv2.hconcat([piimg1,piimg2])
+        temp_image[depthcamimg.shape[0]:output_height,:bottom_row_width] = btm
+
+        # pyramid_img = cv2.vconcat([cv2.hconcat([piimg1,piimg2]),depthcamimg])
+        self.combined.publish(self.bridge.cv2_to_imgmsg(temp_image,"rgb8"))
+	
 
     def imageDepthCallback(self, cv_image, centres):
         depths = []
@@ -118,7 +151,8 @@ class Interpreter(Node):
               ################
               pix = i
               # line = '\rDepth at pixel(%3d, %3d): %7.1f(mm).' % (pix[0], pix[1], cv_image[pix[1], pix[0]])
-              depth = cv_image[pix[0], pix[1]]/1000
+              print(cv_image.shape)
+              depth = cv_image[pix[1], pix[0]]/1000
               depths.append(depth)
               if self.intrinsics:
                   result = rs2.rs2_deproject_pixel_to_point(self.intrinsics, [pix[0], pix[1]], depth)
@@ -126,8 +160,7 @@ class Interpreter(Node):
               if (not self.pix_grade is None):
                   line += ' Grade: %2d' % self.pix_grade
               # self.publisher.publish(msg)
-          except IndexError:
-              return
+
           except CvBridgeError as e:
               print(e)
               return
