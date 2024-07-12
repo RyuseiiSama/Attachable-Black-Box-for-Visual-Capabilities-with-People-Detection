@@ -1,13 +1,13 @@
 
 # Project Description
-This project was done during my internship. This project mainly features the use of **ROS2**, **OpenCV**, **YOLOv5** by [Ultralytics](https://github.com/ultralytics/yolov5) and some **Bash** scripts.
+This project was done during my internship. This project mainly features the use of **ROS2**, **OpenCV**, **YOLOv5** by [Ultralytics](https://github.com/ultralytics/yolov5) (Initially was [YOLACT](https://github.com/dbolya/yolact), in commt history) and some **Bash** scripts.
 
 This project is creating a prototype attachable instrument to enable visuals on any ground control robot.
 
 # Contents
 - Creation
   - [Hardware](#hardware)
-  - [Software](##software)
+  - [Software](#software)
 - [Installation]()
 - [Usage]()
 - [Additional Features]()
@@ -64,12 +64,87 @@ Mostly adopting the Intel RealSense ROS2 Package to obtain RGB and Depth Stream.
 ### Rpi Camera
 Used [gscam2](https://github.com/clydemcqueen/gscam2) to launch a curated gstreamer pipeline which relied on nvidia's nvarguscamerasrc plugin to stream CSI cameras from the jetson board
 
+### Web Video Server (Not included in framework)
+To view all image streams via http, I included the [Web Video Server Package](https://wiki.ros.org/web_video_server) (i built from source) which publishes **ALL** camera streams to your localhost:8080. This web server was only accessible if only on the same network as the Jetson Xavier NX, which I explained in the next section.
+
+### Others
+
+This section includes:
+- Steps taken to optimize computing power on the Jetson Xavier NX
+- Making it as plug-and-play-able as possible
+
+1) Launching in multi-user.target mode
+
+To reduce Graphical processing and reduce background services that boot up (lookup:bloat)
+
+``` sudo systemctl set-default multi-user.target ```
+
+2) Launch Script ```launch.sh```
+
+Created a launch script that will launch ``` launch.py ``` and 3 other nodes (2x gscam and 1x web_video_server) as background processes to start them up in parallel
+
+3) **Launching Jetson Xavier NX's hotspot on startup**
+
+Okay, this part was a little beyond me, so I will explain the steps that i initially went through. Bear in mind I wish to keep my multi-user.target target.
+
+[First]: Using ```nmcli```
+
+Using ```  nmcli connection modify Hotspot connection.autoconnect true ``` , I thought I had set the default for the hotspot connection to be up on startup. I even disabled autoconnection for all other possible WiFi connections.
+
+**Problem**: Hotspot detected by External workstation, could not connect at all. Could only work if i logged in (manully) with username and password on command line.
+
+[Second]: Using ```crontab```
+
+I included ``` nmcli connection modify Hotspot connection.autoconnect true ``` into the mentioned ```launch.sh```, and had ```launch.sh``` run at reboot, i.e:
+
+```crontab -e```
+
+Inserted:
+
+```@reboot /bin/bash /home/user1/Desktop/launch.sh```
+
+**Problem**: nmcli line faced errors as NetworkManager did not seem to start up yet. Could not tell as I (then) did not understand how to view debug lines in background processes.
+
+[Third]: Using ```expect``` and launching it as a service
+Expect is an older solution, but I decided to give it a shot.
+
+In Pseudo Code, my expect code for ```login.exp``` (not included in repo for now) was as follows:
+
+- spawn ```ssh user1@localhost```
+- expect "assword" -> give password
+- spawn ```sudo nmcli connection up Hotspot```
+- expect "assword" again -> give password
+- expect "connection successfully" -> logout
+
+This was then converted into a service, whereby this service would be called AFTER= ```multi-user.target``` and ```NetworkManagerOnline.target``` was hit.
+
+**Problem**: The service seems to work once or twice unreliably, and seemed to stop after successfully logging into local ssh. This may be due to my inexperience working with BOTH expect and Linux services.
+
+[Fourth]: Just using the ssh with ```expect```
+
+This was chanced upon unexpectedly. As mentioned in my first problem, autoconnect only worked after logging in.
+
+Thus:
+
+```login.exp``` service to login through ssh user1@localhost, then logout right away to achieve the same effect. 
+
+**_PROBLEM SOLVED_**
 
 
+# Installation
+Installation only for the ROS2 Packages, including those sourced externally and those created by me.
 
-(Within workspace directory, with src folder and launch.py)
-Build using: colcon build
-Source using: source ./install/setup.bash
+## Clone this workspace
+``` git clone <repo_link> ```
+
+## Build
+(Within workspace directory, next to src folder and launch.py)
+
+``` colcon build ```
+
+Source the workspace
+
+``` source ./install/setup.bash ```
 launch using: ros2 launch launch.py
 
 Yolov5 pt file required, will autodownload if all goes well
