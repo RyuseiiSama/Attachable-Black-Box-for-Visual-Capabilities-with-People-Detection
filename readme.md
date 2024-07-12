@@ -6,7 +6,7 @@ This project is creating a prototype attachable instrument to enable visuals on 
 
 # Contents
 - Creation
-  - [Hardware](##hardware)
+  - [Hardware](#hardware)
   - [Software](##software)
 - [Installation]()
 - [Usage]()
@@ -46,9 +46,25 @@ The Depth camera is mounted on the servo motor using a custom-made holder as wel
 ### Structure
 Using ROS2 as my main framework:
 ![image](https://github.com/user-attachments/assets/b11856ac-6398-45ee-8ac1-b1ea334a3c7c)
+
+Nodes:
+
+/**camera** - Published by Intel RealSense ROS2 Package
+
+/**evaluator** - Adapted YOLOv5 detect.py functioning as a node, publishes detected humans in topic
+
+/**interpreter** - Annotates depth camera stream with 1) Human bounding box and 2) Distance to human. Then combines 3 camera stream (2x rpicam + depth camera) to publish to /combined_img
  
 ### Object Detection
-Adpating the Yolov5 repository by Ultralytics, mainly configuring ```detect.py``` to be featured as a ROS2 Node
+Adpating the Yolov5 repository by Ultralytics, configuring ```detect.py``` to be featured as a ROS2 Node (evaluator). Set default values for classes detected to be only id 0 (human) and confidence level.
+
+### Intel RealSense 
+Mostly adopting the Intel RealSense ROS2 Package to obtain RGB and Depth Stream.
+
+### Rpi Camera
+Used [gscam2](https://github.com/clydemcqueen/gscam2) to launch a curated gstreamer pipeline which relied on nvidia's nvarguscamerasrc plugin to stream CSI cameras from the jetson board
+
+
 
 
 (Within workspace directory, with src folder and launch.py)
