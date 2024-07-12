@@ -1,6 +1,6 @@
 
 # Project Description
-This project was done during my internship. This project mainly features the use of **ROS2**, **OpenCV**, **YOLOv5** by Ultralytics and some **Bash** scripts.
+This project was done during my internship. This project mainly features the use of **ROS2**, **OpenCV**, **YOLOv5** by [Ultralytics](https://github.com/ultralytics/yolov5) and some **Bash** scripts.
 
 This project is creating a prototype attachable instrument to enable visuals on any ground control robot.
 
@@ -33,6 +33,7 @@ Components:
 - 2x RpiCamera v2.1
 - 3S Lipo Battery 2000Mah
 - DC-DC Step up voltage regulator 5A
+- Servo Motor
 
 ### Casing 
 The casing was designed using Siemens NX 12. NX Modeling was used to design the box itself, NX Assembly was used to see if other components would fit into the case (to reduce design iterations). Case was then 3D printed using PLA on the Ultimaker Cura.
@@ -42,6 +43,13 @@ The Depth camera is mounted on the servo motor using a custom-made holder as wel
 
 
 ## Software
+### Structure
+Using ROS2 as my main framework:
+![image](https://github.com/user-attachments/assets/b11856ac-6398-45ee-8ac1-b1ea334a3c7c)
+ 
+### Object Detection
+Adpating the Yolov5 repository by Ultralytics, mainly configuring ```detect.py``` to be featured as a ROS2 Node
+
 
 (Within workspace directory, with src folder and launch.py)
 Build using: colcon build
